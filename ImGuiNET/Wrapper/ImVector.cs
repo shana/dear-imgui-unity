@@ -9,18 +9,18 @@ namespace ImGuiNET
         public readonly int Capacity;
         public readonly IntPtr Data;
 
-        public ref T Ref<T>(int index)
+        public ref T Ref<T>(int index) where T : struct
         {
             return ref Unsafe.AsRef<T>((byte*)Data + index * Unsafe.SizeOf<T>());
         }
 
-        public IntPtr Address<T>(int index)
+        public IntPtr Address<T>(int index) where T : struct
         {
             return (IntPtr)((byte*)Data + index * Unsafe.SizeOf<T>());
         }
     }
 
-    public unsafe struct ImVector<T>
+    public unsafe struct ImVector<T> where T : struct
     {
         public readonly int Size;
         public readonly int Capacity;
@@ -43,7 +43,7 @@ namespace ImGuiNET
         public ref T this[int index] => ref Unsafe.AsRef<T>((byte*)Data + index * Unsafe.SizeOf<T>());
     }
 
-    public unsafe struct ImPtrVector<T>
+    public unsafe struct ImPtrVector<T> where T : struct
     {
         public readonly int Size;
         public readonly int Capacity;
