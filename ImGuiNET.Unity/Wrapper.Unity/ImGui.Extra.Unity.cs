@@ -19,4 +19,23 @@ namespace ImGuiNET
             return new Vector2(point.x, ImGui.GetIO().DisplaySize.y - point.y);
         }
     }
+
+    internal static class UnityUtils
+    {
+        public static void Destroy(this UnityEngine.Object obj)
+        {
+            if (obj != null)
+            {
+#if UNITY_EDITOR
+                if (Application.isPlaying && !UnityEditor.EditorApplication.isPaused)
+                    UnityEngine.Object.Destroy(obj);
+                else
+                    UnityEngine.Object.DestroyImmediate(obj);
+#else
+                UnityObject.Destroy(obj);
+#endif
+            }
+        }
+
+    }
 }

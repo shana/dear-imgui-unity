@@ -57,8 +57,9 @@ namespace ImGuiNET.Unity
         {
             io.SetBackendRendererName(null);
 
-            if (_mesh     != null) { Object.Destroy(_mesh);      _mesh     = null; }
-            if (_material != null) { Object.Destroy(_material);  _material = null; }
+
+            if (_mesh     != null) { _mesh.Destroy();      _mesh     = null; }
+            if (_material != null) { _material.Destroy();  _material = null; }
         }
 
         public void RenderDrawLists(CommandBuffer cmd, ImDrawDataPtr drawData)

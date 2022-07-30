@@ -59,7 +59,7 @@ namespace ImGuiNET.Unity
         {
             io.SetBackendRendererName(null);
 
-            if (_material != null) { Object.Destroy(_material); _material = null; }
+            if (_material != null) { _material.Destroy(); _material = null; }
             _vtxBuf?.Release(); _vtxBuf = null;
             _idxBuf?.Release(); _idxBuf = null;
             _argBuf?.Release(); _argBuf = null;

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Diagnostics;
+using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.Profiling;
 
@@ -18,6 +19,7 @@ namespace ImGuiNET.Unity
         IImGuiPlatform _platform;
         CommandBuffer _cmd;
         bool _usingURP;
+        protected bool FrameBegun { get; private set; }
 
         public event System.Action Layout;  // Layout event for *this* ImGui instance
         [SerializeField] bool _doGlobalLayout = true; // do global/default Layout event too
@@ -43,18 +45,22 @@ namespace ImGuiNET.Unity
         static readonly ProfilerMarker s_layoutPerfMarker = new ProfilerMarker("DearImGui.Layout");
         static readonly ProfilerMarker s_drawListPerfMarker = new ProfilerMarker("DearImGui.RenderDrawLists");
 
-        void Awake()
+        protected virtual void Awake()
         {
-            _context = ImGuiUn.CreateUnityContext();
+            Ensure();
         }
 
-        void OnDestroy()
+        protected virtual void OnDestroy()
         {
-            ImGuiUn.DestroyUnityContext(_context);
+            if (_context != null)
+                ImGuiUn.DestroyUnityContext(_context);
+            _context = null;
         }
 
-        void OnEnable()
+        protected virtual void OnEnable()
         {
+            Ensure();
+
             _usingURP = RenderUtils.IsUsingURP();
             if (_camera == null) Fail(nameof(_camera));
             if (_renderFeature == null && _usingURP) Fail(nameof(_renderFeature));
@@ -81,24 +87,33 @@ namespace ImGuiNET.Unity
 
             void Fail(string reason)
             {
-                OnDisable();
                 enabled = false;
                 throw new System.Exception($"Failed to start: {reason}");
             }
         }
 
-        void OnDisable()
+        private void Ensure()
         {
-            ImGuiUn.SetUnityContext(_context);
-            ImGuiIOPtr io = ImGui.GetIO();
+            if (_context == null)
+                _context = ImGuiUn.CreateUnityContext();
+        }
 
-            SetRenderer(null, io);
-            SetPlatform(null, io);
+        protected virtual void OnDisable()
+        {
+            ImGuiIOPtr io;
+            if (_context != null)
+            {
+                ImGuiUn.SetUnityContext(_context);
+                io = ImGui.GetIO();
+
+                SetRenderer(null, io);
+                SetPlatform(null, io);
+            }
 
             ImGuiUn.SetUnityContext(null);
 
-            _context.textures.Shutdown();
-            _context.textures.DestroyFontAtlas(io);
+            _context?.textures.Shutdown();
+            _context?.textures.DestroyFontAtlas(io);
 
             if (_usingURP)
             {
@@ -116,7 +131,7 @@ namespace ImGuiNET.Unity
             _cmd = null;
         }
 
-        void Reset()
+        protected virtual void Reset()
         {
             _camera = Camera.main;
             _initialConfiguration.SetDefaults();
@@ -128,18 +143,15 @@ namespace ImGuiNET.Unity
             OnEnable();
         }
 
-        void Update()
+        protected virtual void LateUpdate()
         {
             ImGuiUn.SetUnityContext(_context);
-            ImGuiIOPtr io = ImGui.GetIO();
+            
+            if ((_doGlobalLayout && ImGuiUn.NeedsFrame) || Layout != null)
+            {
+                EnsureFrame();
+            }
 
-            s_prepareFramePerfMarker.Begin(this);
-            _context.textures.PrepareFrame(io);
-            _platform.PrepareFrame(io, _camera.pixelRect);
-            ImGui.NewFrame();
-            s_prepareFramePerfMarker.End();
-
-            s_layoutPerfMarker.Begin(this);
             try
             {
                 if (_doGlobalLayout)
@@ -148,14 +160,88 @@ namespace ImGuiNET.Unity
             }
             finally
             {
-                ImGui.Render();
-                s_layoutPerfMarker.End();
+                Render();
             }
+        }
 
-            s_drawListPerfMarker.Begin(this);
+        void Render()
+        {
+            if (!FrameBegun) return;
+            FrameBegun = false;
+
+            ImGui.Render();
+
+            ProfilerLayoutEnd();
+            ProfilerDrawBegin();
+
             _cmd.Clear();
             _renderer.RenderDrawLists(_cmd, ImGui.GetDrawData());
+
+            ProfilerDrawEnd();
+        }
+
+
+        public void EnsureFrame()
+        {
+            if (FrameBegun || !enabled)
+                return;
+ 
+            PrepareFrame();
+        }
+
+
+        void PrepareFrame()
+        {
+            FrameBegun = true;
+
+            ImGuiUn.SetUnityContext(_context);
+            ImGuiIOPtr io = ImGui.GetIO();
+
+            ProfilerPrepareBegin();
+
+            _context.textures.PrepareFrame(io);
+            _platform.PrepareFrame(io, _camera.pixelRect);
+            ImGui.NewFrame();
+
+            ProfilerPrepareEnd();
+
+            ProfilerLayoutBegin();
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private void ProfilerPrepareBegin()
+        {
+            s_prepareFramePerfMarker.Begin(this);
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private void ProfilerPrepareEnd()
+        {
+            s_prepareFramePerfMarker.End();
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private void ProfilerLayoutBegin()
+        {
+            s_layoutPerfMarker.Begin(this);
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private static void ProfilerDrawEnd()
+        {
             s_drawListPerfMarker.End();
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private static void ProfilerLayoutEnd()
+        {
+            s_layoutPerfMarker.End();
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        private void ProfilerDrawBegin()
+        {
+            s_drawListPerfMarker.Begin(this);
         }
 
         void SetRenderer(IImGuiRenderer renderer, ImGuiIOPtr io)

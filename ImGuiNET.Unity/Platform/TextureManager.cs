@@ -163,7 +163,7 @@ namespace ImGuiNET.Unity
             _textures.Clear();
             _textureIds.Clear();
             _spriteData.Clear();
-            if (_atlasTex != null) { GameObject.Destroy(_atlasTex); _atlasTex = null; }
+            if (_atlasTex != null) { _atlasTex.Destroy(); _atlasTex = null; }
         }
 
         unsafe Texture2D CreateAtlasTexture(ImFontAtlasPtr atlas)
