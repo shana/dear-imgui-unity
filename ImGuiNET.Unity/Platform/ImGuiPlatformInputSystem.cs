@@ -44,7 +44,7 @@ namespace ImGuiNET.Unity
         {
             _cursorShapes = cursorShapes;
             _iniSettings = iniSettings;
-            _callbacks.ImeSetInputScreenPos = (x, y) => _keyboard.SetIMECursorPosition(new Vector2(x, y));
+            _callbacks.ImeSetPlatformImeData = (__, imeDataPtr) => _keyboard.SetIMECursorPosition(imeDataPtr.InputPos);
         }
 
         public bool Initialize(ImGuiIOPtr io)
@@ -78,6 +78,17 @@ namespace ImGuiNET.Unity
             InputSystem.onDeviceChange -= OnDeviceChange;
         }
 
+        bool IImGuiPlatform.UpdateInput(ImGuiIOPtr io) => true;
+
+        void UpdateInputInternal(ImGuiIOPtr io)
+        {
+            // input
+            UpdateKeyboard(io, Keyboard.current);                               // update keyboard state
+            UpdateMouse(io, Mouse.current);                                     // update mouse state
+            UpdateCursor(io, ImGui.GetMouseCursor());                           // update Unity cursor with the cursor requested by ImGui
+            UpdateGamepad(io, Gamepad.current);                                 // update game controllers (if enabled and available)
+        }
+
         public void PrepareFrame(ImGuiIOPtr io, Rect displayRect)
         {
             Assert.IsTrue(io.Fonts.IsBuilt(), "Font atlas not built! Generally built by the renderer. Missing call to renderer NewFrame() function?");
@@ -87,11 +98,7 @@ namespace ImGuiNET.Unity
 
             io.DeltaTime = Time.unscaledDeltaTime;                              // setup timestep
 
-            // input
-            UpdateKeyboard(io, Keyboard.current);                               // update keyboard state
-            UpdateMouse(io, Mouse.current);                                     // update mouse state
-            UpdateCursor(io, ImGui.GetMouseCursor());                           // update Unity cursor with the cursor requested by ImGui
-            UpdateGamepad(io, Gamepad.current);                                 // update game controllers (if enabled and available)
+            UpdateInputInternal(io);
 
             // ini settings
             if (_iniSettings != null && io.WantSaveIniSettings)
@@ -128,7 +135,7 @@ namespace ImGuiNET.Unity
                 io.KeyMap[(int)ImGuiKey.Space      ] = (int)Key.Space,
                 io.KeyMap[(int)ImGuiKey.Enter      ] = (int)Key.Enter,
                 io.KeyMap[(int)ImGuiKey.Escape     ] = (int)Key.Escape,
-                io.KeyMap[(int)ImGuiKey.KeyPadEnter] = (int)Key.NumpadEnter,
+                io.KeyMap[(int)ImGuiKey.KeypadEnter] = (int)Key.NumpadEnter,
                 // letter keys mapped by display name to avoid being layout agnostic (used as shortcuts)
                 io.KeyMap[(int)ImGuiKey.A          ] = (int)((KeyControl)kb["#(a)"]).keyCode, // for text edit CTRL+A: select all
                 io.KeyMap[(int)ImGuiKey.C          ] = (int)((KeyControl)kb["#(c)"]).keyCode, // for text edit CTRL+C: copy

@@ -1,13 +1,17 @@
-﻿using System.Diagnostics;
+﻿using System.Collections;
+using System.Diagnostics;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.Profiling;
+using UnityEditor;
+using Debug = UnityEngine.Debug;
 
 namespace ImGuiNET.Unity
 {
     // This component is responsible for setting up ImGui for use in Unity.
     // It holds the necessary context and sets it up before any operation is done to ImGui.
-    // (e.g. set the context, texture and font managers before calling Layout)
+    // (e.g. set the context, texture and font managers before rendering)
 
     /// <summary>
     /// Dear ImGui integration into Unity
@@ -19,10 +23,20 @@ namespace ImGuiNET.Unity
         IImGuiPlatform _platform;
         CommandBuffer _cmd;
         bool _usingURP;
-        protected bool FrameBegun { get; private set; }
+        bool _renderDeferred;
+        bool _frameReady;
 
-        public event System.Action Layout;  // Layout event for *this* ImGui instance
-        [SerializeField] bool _doGlobalLayout = true; // do global/default Layout event too
+        protected bool FramePrepared { get; set; }
+
+        protected bool FrameReady
+        {
+            get => _frameReady && IsRepaint;
+            set { _frameReady = value; }
+        }
+
+        private bool IsRepaint => Event.current == null || Event.current.type == EventType.Repaint;
+
+        protected bool FrameBegun { get; set; }
 
         [SerializeField] Camera _camera = null;
         [SerializeField] RenderImGuiFeature _renderFeature = null;
@@ -71,7 +85,7 @@ namespace ImGuiNET.Unity
             else
                 _camera.AddCommandBuffer(CameraEvent.AfterEverything, _cmd);
 
-            ImGuiUn.SetUnityContext(_context);
+            ActivateContext();
             ImGuiIOPtr io = ImGui.GetIO();
 
             _initialConfiguration.ApplyTo(io);
@@ -92,25 +106,22 @@ namespace ImGuiNET.Unity
             }
         }
 
-        private void Ensure()
-        {
-            if (_context == null)
-                _context = ImGuiUn.CreateUnityContext();
-        }
-
         protected virtual void OnDisable()
         {
             ImGuiIOPtr io;
             if (_context != null)
             {
-                ImGuiUn.SetUnityContext(_context);
+                // end any frame that's pending
+                EndFrame();
+
+                ActivateContext();
                 io = ImGui.GetIO();
 
                 SetRenderer(null, io);
                 SetPlatform(null, io);
             }
 
-            ImGuiUn.SetUnityContext(null);
+            DeactivateContext();
 
             _context?.textures.Shutdown();
             _context?.textures.DestroyFontAtlas(io);
@@ -135,6 +146,15 @@ namespace ImGuiNET.Unity
         {
             _camera = Camera.main;
             _initialConfiguration.SetDefaults();
+            _shaders = Resources.FindObjectsOfTypeAll<ShaderResourcesAsset>().FirstOrDefault();
+            _style = Resources.FindObjectsOfTypeAll<StyleAsset>().FirstOrDefault();
+            _cursorShapes = Resources.FindObjectsOfTypeAll<CursorShapesAsset>().FirstOrDefault();
+        }
+
+        private void Ensure()
+        {
+            if (_context == null)
+                _context = ImGuiUn.CreateUnityContext();
         }
 
         public void Reload()
@@ -143,35 +163,105 @@ namespace ImGuiNET.Unity
             OnEnable();
         }
 
-        protected virtual void LateUpdate()
+        public void EndFrame()
         {
-            ImGuiUn.SetUnityContext(_context);
-            
-            if ((_doGlobalLayout && ImGuiUn.NeedsFrame) || Layout != null)
+            if (!FrameBegun) return;
+
+            Render();
+        }
+
+        public void EnsureFrame()
+        {
+            if (!enabled)
+                return;
+
+            if (!FramePrepared)
             {
-                EnsureFrame();
+                PrepareFrame();
             }
 
-            try
+            // can only pump events while we aren't in a frame
+            if (!FrameBegun)
             {
-                if (_doGlobalLayout)
-                    ImGuiUn.DoLayout();   // ImGuiUn.Layout: global handlers
-                Layout?.Invoke();     // this.Layout: handlers specific to this instance
+                ActivateContext();
+                FrameReady = _platform.UpdateInput(ImGui.GetIO());
             }
-            finally
+
+            // either all unity ongui event input has been handled, or we're using the input system, which has all the input set up already
+            if (FrameReady)
             {
-                Render();
+                NewFrame();
             }
+        }
+
+        void PrepareFrame()
+        {
+            FramePrepared = true;
+
+            ActivateContext();
+            ImGuiIOPtr io = ImGui.GetIO();
+
+            ProfilerPrepareBegin();
+
+            _context.textures.PrepareFrame(io);
+            _platform.PrepareFrame(io, _camera.pixelRect);
+
+            ProfilerPrepareEnd();
+        }
+
+        void NewFrame()
+        {
+            if (FrameBegun)
+                return;
+            FrameBegun = true;
+
+            ProfilerLayoutBegin();
+
+            ImGui.NewFrame();
+
+            if (!_renderDeferred)
+            {
+                _renderDeferred = true;
+                if (!Application.isPlaying)
+                {
+#if UNITY_EDITOR
+                    EditorApplication.update += EditorApplicationUpdate;
+#endif
+                }
+                else
+                {
+                    StartCoroutine(RenderOnFrameEnd());
+                }
+            }
+        }
+
+#if UNITY_EDITOR
+        void EditorApplicationUpdate()
+        {
+            EditorApplication.update -= EditorApplicationUpdate;
+            EndFrame();
+        }
+#endif
+
+        IEnumerator RenderOnFrameEnd()
+        {
+            yield return new WaitForEndOfFrame();
+            EndFrame();
         }
 
         void Render()
         {
-            if (!FrameBegun) return;
             FrameBegun = false;
+            FrameReady = false;
+            FramePrepared = false;
+            _renderDeferred = false;
+
+            ActivateContext();
 
             ImGui.Render();
 
             ProfilerLayoutEnd();
+
             ProfilerDrawBegin();
 
             _cmd.Clear();
@@ -180,33 +270,23 @@ namespace ImGuiNET.Unity
             ProfilerDrawEnd();
         }
 
-
-        public void EnsureFrame()
+        void SetRenderer(IImGuiRenderer renderer, ImGuiIOPtr io)
         {
-            if (FrameBegun || !enabled)
-                return;
- 
-            PrepareFrame();
+            _renderer?.Shutdown(io);
+            _renderer = renderer;
+            _renderer?.Initialize(io);
         }
 
-
-        void PrepareFrame()
+        void SetPlatform(IImGuiPlatform platform, ImGuiIOPtr io)
         {
-            FrameBegun = true;
-
-            ImGuiUn.SetUnityContext(_context);
-            ImGuiIOPtr io = ImGui.GetIO();
-
-            ProfilerPrepareBegin();
-
-            _context.textures.PrepareFrame(io);
-            _platform.PrepareFrame(io, _camera.pixelRect);
-            ImGui.NewFrame();
-
-            ProfilerPrepareEnd();
-
-            ProfilerLayoutBegin();
+            _platform?.Shutdown(io);
+            _platform = platform;
+            _platform?.Initialize(io);
         }
+
+        void ActivateContext() => ImGuiUn.SetUnityContext(_context);
+        void DeactivateContext() => ImGuiUn.SetUnityContext(null);
+
 
         [Conditional("ENABLE_PROFILER")]
         private void ProfilerPrepareBegin()
@@ -242,20 +322,6 @@ namespace ImGuiNET.Unity
         private void ProfilerDrawBegin()
         {
             s_drawListPerfMarker.Begin(this);
-        }
-
-        void SetRenderer(IImGuiRenderer renderer, ImGuiIOPtr io)
-        {
-            _renderer?.Shutdown(io);
-            _renderer = renderer;
-            _renderer?.Initialize(io);
-        }
-
-        void SetPlatform(IImGuiPlatform platform, ImGuiIOPtr io)
-        {
-            _platform?.Shutdown(io);
-            _platform = platform;
-            _platform?.Initialize(io);
         }
     }
 }

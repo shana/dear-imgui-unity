@@ -70,7 +70,7 @@ namespace ImGuiNET.Unity
             im.GlyphMinAdvanceX = GlyphMinAdvanceX;
             im.GlyphMaxAdvanceX = GlyphMaxAdvanceX;
             im.MergeMode = MergeIntoPrevious;
-            im.RasterizerFlags = RasterizerFlags;
+            im.FontBuilderFlags = RasterizerFlags;
             im.RasterizerMultiply = RasterizerMultiply;
             im.EllipsisChar = EllipsisChar;
 
@@ -90,7 +90,7 @@ namespace ImGuiNET.Unity
             GlyphMinAdvanceX = im.GlyphMinAdvanceX;
             GlyphMaxAdvanceX = im.GlyphMaxAdvanceX;
             MergeIntoPrevious = im.MergeMode;
-            RasterizerFlags = im.RasterizerFlags;
+            RasterizerFlags = im.FontBuilderFlags;
             RasterizerMultiply = im.RasterizerMultiply;
             EllipsisChar = (char)im.EllipsisChar;
 

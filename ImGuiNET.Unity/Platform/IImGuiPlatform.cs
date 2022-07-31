@@ -9,6 +9,7 @@ namespace ImGuiNET.Unity
     {
         bool Initialize(ImGuiIOPtr io);
         void Shutdown(ImGuiIOPtr io);
+        bool UpdateInput(ImGuiIOPtr io);
         void PrepareFrame(ImGuiIOPtr io, Rect displayRect);
     }
 }

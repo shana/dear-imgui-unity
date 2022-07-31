@@ -108,7 +108,7 @@ namespace ImGuiNET.Unity
         public float CurveTessellationTol;
 
         [Tooltip("Maximum error (in pixels) allowed when using AddCircle()/AddCircleFilled() or drawing rounded corner rectangles with no explicit segment count specified. Decrease for higher quality but more geometry.")]
-        public float CircleSegmentMaxError;
+        public float CircleTessellationMaxError = .3f;
 
         [HideInInspector]
         public Color[] Colors = new Color[(int)ImGuiCol.COUNT];
@@ -149,7 +149,7 @@ namespace ImGuiNET.Unity
             s.AntiAliasedLines       = AntiAliasedLines;
             s.AntiAliasedFill        = AntiAliasedFill;
             s.CurveTessellationTol   = CurveTessellationTol;
-            s.CircleSegmentMaxError  = CircleSegmentMaxError;
+            s.CircleTessellationMaxError  = CircleTessellationMaxError <= 0f ? .3f : CircleTessellationMaxError;
             for (var i = 0; i < Colors.Length; ++i)
                 s.Colors[i] = Colors[i];
         }
@@ -190,7 +190,7 @@ namespace ImGuiNET.Unity
             AntiAliasedLines       = s.AntiAliasedLines;
             AntiAliasedFill        = s.AntiAliasedFill;
             CurveTessellationTol   = s.CurveTessellationTol;
-            CircleSegmentMaxError  = s.CircleSegmentMaxError;
+            CircleTessellationMaxError = s.CircleTessellationMaxError;
             for (var i = 0; i < Colors.Length; ++i)
                 Colors[i] = s.Colors[i];
         }
