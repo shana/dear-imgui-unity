@@ -196,7 +196,10 @@ namespace ImGuiNET.Unity
             io.DisplaySize = new Vector2(displayRect.width, displayRect.height); // setup display size (every frame to accommodate for window resizing)
             // TODO: dpi aware, scale, etc
 
-            io.DeltaTime = Time.unscaledDeltaTime; // setup timestep
+            var deltaTime = Time.unscaledDeltaTime;
+            if (Mathf.Approximately(deltaTime, float.Epsilon))
+                deltaTime = .0000001f;
+            io.DeltaTime = deltaTime; // setup timestep
 
             var state = TryGetStateInfo();
             state?.Clear();
